@@ -31,6 +31,26 @@
   .error-desc{font-size:13px;color:var(--ink-2);max-width:480px;text-align:center;line-height:1.5}
   .error-desc code{background:var(--line-soft);padding:2px 6px;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:11px}
 
+  /* Password gate */
+  .password-gate{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;
+    background-image:radial-gradient(1400px 700px at 95% -20%, rgba(166,119,41,.06), transparent 55%),radial-gradient(900px 500px at -10% 20%, rgba(30,58,95,.04), transparent 55%)}
+  .pg-card{background:var(--paper);border:1px solid var(--line);border-radius:16px;padding:44px 48px;width:min(420px, 92vw);box-shadow:0 10px 40px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.03);text-align:center}
+  .pg-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.3em;color:var(--ink-3);text-transform:uppercase;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:10px}
+  .pg-eyebrow::before,.pg-eyebrow::after{content:"";width:20px;height:1px;background:var(--gold)}
+  .pg-title{font-family:'Fraunces',serif;font-size:32px;font-weight:300;letter-spacing:-.02em;color:var(--ink);margin-bottom:8px;line-height:1.1}
+  .pg-title em{font-style:italic;font-weight:400;color:var(--gold)}
+  .pg-subtitle{font-size:13px;color:var(--ink-2);margin-bottom:28px;line-height:1.5}
+  .pg-input-group{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+  .pg-input{width:100%;padding:14px 16px;border:1px solid var(--line);border-radius:10px;font-family:'JetBrains Mono',monospace;font-size:16px;letter-spacing:.1em;color:var(--ink);background:var(--paper);text-align:center;outline:none;transition:border-color .15s,box-shadow .15s}
+  .pg-input:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(166,119,41,.12)}
+  .pg-input.shake{animation:shake .4s cubic-bezier(.36,.07,.19,.97) both;border-color:var(--rose)}
+  @keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(4px)}30%,50%,70%{transform:translateX(-6px)}40%,60%{transform:translateX(6px)}}
+  .pg-submit{background:var(--ink);color:var(--paper);border:none;border-radius:10px;padding:14px 20px;font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;cursor:pointer;text-transform:uppercase;transition:background .15s;width:100%}
+  .pg-submit:hover{background:var(--gold)}
+  .pg-error{color:var(--rose);font-size:12px;font-family:'JetBrains Mono',monospace;letter-spacing:.05em;margin-top:10px;min-height:18px;opacity:0;transition:opacity .2s}
+  .pg-error.show{opacity:1}
+  .pg-footer{margin-top:28px;padding-top:20px;border-top:1px solid var(--line-soft);font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:var(--ink-3);text-transform:uppercase}
+
   header{display:flex;align-items:flex-end;justify-content:space-between;padding-bottom:22px;border-bottom:1px solid var(--line);margin-bottom:24px;gap:20px;flex-wrap:wrap}
   .brand-block{display:flex;flex-direction:column;gap:4px}
   .eyebrow{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.3em;color:var(--ink-3);text-transform:uppercase;display:flex;align-items:center;gap:10px}
@@ -172,7 +192,21 @@
 </head>
 <body>
 
-<div class="loading-screen" id="loading-screen">
+<div class="password-gate" id="password-gate">
+  <div class="pg-card">
+    <div class="pg-eyebrow">Abbott Cambodia · KH01</div>
+    <div class="pg-title">Total Return <em>Dashboard</em></div>
+    <div class="pg-subtitle">This dashboard is restricted.<br>Please enter the access code to continue.</div>
+    <div class="pg-input-group">
+      <input type="password" class="pg-input" id="pg-input" placeholder="Access Code" autocomplete="off" maxlength="50" />
+      <button class="pg-submit" id="pg-submit">Unlock Dashboard</button>
+    </div>
+    <div class="pg-error" id="pg-error">Incorrect access code</div>
+    <div class="pg-footer">Manager View · Confidential</div>
+  </div>
+</div>
+
+<div class="loading-screen" id="loading-screen" style="display:none">
   <div class="loading-spinner"></div>
   <div class="loading-text">Loading Dashboard Data...</div>
 </div>
@@ -253,9 +287,68 @@
 /* ============================================================
    CONFIG — paste your Google Apps Script Web App URL here
    ============================================================ */
-const API_URL = 'https://script.google.com/macros/s/AKfycbxFPGsIJ4p1-dfOL9CwPHrdGb5NiUObj-L0J2bZLnT07Z0dJdt8mVY7pDSkKsEcJ47aLw/exec';
+const API_URL = 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE';
+
+/* Password — hashed (SHA-256 of '79444')
+   To change: open browser console, run:
+     const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('newpass'));
+     console.log(Array.from(new Uint8Array(h)).map(b=>b.toString(16).padStart(2,'0')).join(''));
+*/
+const PASSWORD_HASH = 'e8dec8cbb1704ddb5133cb74d15b1ed48830edeca3584241ef6929549ba039ca';
 
 let DATA = null;
+
+/* ============ PASSWORD GATE ============ */
+async function sha256(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+async function checkPassword(input){
+  const hash = await sha256(input);
+  return hash === PASSWORD_HASH;
+}
+
+function unlock(){
+  document.getElementById('password-gate').style.display = 'none';
+  document.getElementById('loading-screen').style.display = 'flex';
+  try { sessionStorage.setItem('dash_unlocked', '1'); } catch(e) {}
+  init();
+}
+
+function setupPasswordGate(){
+  // Auto-unlock if already verified this session
+  try {
+    if (sessionStorage.getItem('dash_unlocked') === '1') {
+      unlock();
+      return;
+    }
+  } catch(e) {}
+
+  const input = document.getElementById('pg-input');
+  const submit = document.getElementById('pg-submit');
+  const errorEl = document.getElementById('pg-error');
+
+  const attempt = async () => {
+    const val = input.value.trim();
+    if (!val) return;
+    const ok = await checkPassword(val);
+    if (ok){
+      errorEl.classList.remove('show');
+      unlock();
+    } else {
+      errorEl.classList.add('show');
+      input.classList.add('shake');
+      input.value = '';
+      setTimeout(() => input.classList.remove('shake'), 500);
+    }
+  };
+
+  submit.addEventListener('click', attempt);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') attempt(); });
+  input.addEventListener('input', () => errorEl.classList.remove('show'));
+  setTimeout(() => input.focus(), 100);
+}
 
 /* ============ HELPERS ============ */
 const fmtK = v => { const a = Math.abs(v); if (a >= 1e6) return '$' + (v/1e6).toFixed(2) + 'M'; if (a >= 1e3) return '$' + (v/1e3).toFixed(1) + 'K'; return '$' + Math.round(v); };
@@ -701,7 +794,7 @@ window.addEventListener('resize', () => {
   renderTrend(agg);
 });
 
-init();
+setupPasswordGate();
 </script>
 </body>
 </html>
